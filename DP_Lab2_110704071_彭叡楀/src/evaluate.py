@@ -14,7 +14,6 @@ def evaluate(net, data, device,criterion):
     net.eval()
     total_dice = 0
     total_loss = 0
-    num_batches = 0
     #caculate the average accuracy & dice score of each data by model forwarding of image and the mask
     with torch.no_grad():
         for _ , batch in enumerate(data):
@@ -23,7 +22,7 @@ def evaluate(net, data, device,criterion):
 
             
             outputs = net(images)
-            preds = torch.sigmoid(outputs) > 0.5
+            preds = (torch.round(torch.sigmoid(outputs))).float()
 
             dice = dice_score(preds, masks)
             total_dice += dice
@@ -31,18 +30,8 @@ def evaluate(net, data, device,criterion):
             loss = criterion(outputs, masks)
             total_loss += loss
 
-            num_batches += 1
-
-    avg_dice = total_dice / num_batches
-    avg_loss = total_loss / num_batches
+    avg_dice = total_dice / len(data)
+    avg_loss = total_loss / len(data)
     
     
     return avg_dice, avg_loss
-
-def get_args():
-    parser = argparse.ArgumentParser(description='Evaluate the UNet model on the dataset')
-    parser.add_argument('--model', default='saved_models/model_UNet.pth', help='path to the stored model weight')
-    parser.add_argument('--data_path', type=str, required=True, help='path to the input data')
-    parser.add_argument('--batch_size', '-b', type=int, default=1, help='batch size')
-
-    return parser.parse_args()

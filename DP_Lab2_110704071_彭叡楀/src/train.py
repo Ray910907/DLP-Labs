@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn as nn
 from models.unet import UNet
+from tqdm import tqdm
 from models.resnet34_unet import ResNet34_UNet
 from utils import plot_results
 from evaluate import evaluate
@@ -14,6 +15,8 @@ import numpy as np
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def train(args):
+    #print(args.use_batchnorm)
+    use_batchnorm = True if args.use_batchnorm == "Yes" else False
     #load the dataset for training & validation
     train_dataset = load_dataset(f"{args.data_path}", 'train')
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -23,10 +26,10 @@ def train(args):
 
     #choose the type of model you need to use then base on the device you use
     if args.model == "unet":
-        model = torch.load("saved_models/unet_best.pth", map_location=device) if os.path.exists('saved_models/model_unet.pth') else UNet()
+        model = UNet(use_batchnorm)
         output = "saved_models/unet.png"
     elif args.model == "resnet34":
-        model = torch.load("saved_models/resnet34_best.pth", map_location=device) if os.path.exists('saved_models/model_resnet34.pth') else ResNet34_UNet()
+        model = ResNet34_UNet(use_batchnorm)
         output = "saved_models/resnet34.png"
     else:
         raise(ValueError("Model should be 'unet' or 'resnet34'."))
@@ -37,7 +40,7 @@ def train(args):
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    best_dice = 0.0
+    max_dice = 0.0
     
     train_losses = []
     val_dices = []
@@ -49,10 +52,11 @@ def train(args):
         model.train()
         total_loss = 0.0
         
-        for _, batch in enumerate(train_loader):
+        print(f"Epoch [{epoch + 1}/{args.epochs}]")
+        for _, batch in tqdm(enumerate(train_loader), total=len(train_loader), desc="Training"):
             images = batch['image'].to(device,dtype=torch.float)
             masks = batch['mask'].to(device,dtype=torch.float)
-            
+
             #data augmentation: flip the photo to get different photo each time, increasing data variability
             if(args.flip == "Yes"):
                 if torch.rand(1) < 0.5:
@@ -73,17 +77,15 @@ def train(args):
             total_loss += loss.item()
 
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch [{epoch + 1}/{args.epochs}], Train Loss: {avg_loss:.4f}")
-
         val_dice, val_loss = evaluate(model, val_loader, device, criterion)
-        print(f"Dice Score: {val_dice:.4f}, Validation Loss: {val_loss:.4f}")
+        print(f"Dice Score: {val_dice:.4f}, Train Loss: {avg_loss:.4f}, Validation Loss: {val_loss:.4f}")
         
         train_losses.append(avg_loss)
         val_dices.append(val_dice)
         val_losses.append(val_loss)
 
-        if val_dice > best_dice:
-            best_dice = val_dice
+        if val_dice > max_dice:
+            max_dice = val_dice
             model_path = os.path.join("saved_models", f"{args.model}_best.pth")
             torch.save(model, model_path)
             print(f"New best model saved to {model_path} with Dice Score: {val_dice:.4f}")
@@ -101,7 +103,7 @@ def get_args():
     parser.add_argument('--learning-rate', '-lr', type=float, default=1e-5, help='Learning rate')
     parser.add_argument('--model', '-m', type=str, required=True, help='Model type: "unet" or "resnet34"')
     parser.add_argument('--flip', '-f', type=str, default = "Yes", help='Flip the photo: "Yes" or "No"')
-
+    parser.add_argument('--use-batchnorm',type=str, default = "Yes" , help='Normalize the Batch: "Yes" or "No"')
     return parser.parse_args()
 
 if __name__ == "__main__":

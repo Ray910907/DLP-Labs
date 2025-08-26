@@ -2,15 +2,16 @@ import torch
 import matplotlib.pyplot as plt
 import os
 
-def dice_score(pred_mask, gt_mask, eps=1e-7):
+def dice_score(pred_mask, gt_mask):
+    eps=1e-6
 
     pred_mask = pred_mask.flatten()
     gt_mask = gt_mask.flatten()
     
-    intersection = (pred_mask * gt_mask).sum()
+    intersect = torch.mul(pred_mask, gt_mask).sum()
     union = pred_mask.sum() + gt_mask.sum()
     
-    dice = (2.0 * intersection + eps) / (union + eps)
+    dice = (2.0 * intersect + eps) / (union + eps)
     
     return dice.item()
 

@@ -7,13 +7,8 @@ import numpy as np
 from PIL import Image
 import os
 import torch.nn as nn
-
+from tqdm import tqdm
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-def save_mask(mask, output_path, index):
-    mask = (mask * 255).astype(np.uint8)
-    mask = Image.fromarray(mask)
-    mask.save(f"{output_path}/mask_{index:03d}.png")
 
 def test(args):
     #load the dataset for testing
@@ -38,17 +33,15 @@ def test(args):
     criterion = nn.BCEWithLogitsLoss()
     total_dice = 0
     total_loss = 0
-    num_batches = 0
     
     #get the predicted answer,dice score and loss
     with torch.no_grad():
-        for i, batch in enumerate(dataloader):
+        for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc="Testing"):
             images = batch['image'].to(device, dtype=torch.float)
             masks = batch['mask'].to(device, dtype=torch.float)
 
             outputs = model(images)
-            preds = torch.sigmoid(outputs) > 0.5
-            preds = preds.float()
+            preds = (torch.round(torch.sigmoid(outputs))).float()
 
             loss = criterion(outputs, masks)
             total_loss += loss.item()
@@ -58,27 +51,20 @@ def test(args):
 
             for j in range(preds.size(0)):
                 mask = preds[j].cpu().numpy().squeeze()
-                save_mask(mask, output_path, i * args.batch_size + j)
+                id = i * args.batch_size + j
+                mask = mask = np.round(mask * 255).astype(np.uint8)
+                mask = Image.fromarray(mask)
+                mask.save(f"{output_path}/{id}_mask.png")
 
-            num_batches += 1
+    avg_dice = total_dice / len(dataloader)
+    avg_loss = total_loss / len(dataloader)
 
-    avg_dice = total_dice / num_batches
-    avg_loss = total_loss / num_batches
-
-    print(f"Average Dice Score: {avg_dice:.4f}")
-    print(f"Average Loss: {avg_loss:.4f}")
-
-    result_path = os.path.join(output_path, "results.txt")
-    with open(result_path, "w") as f:
-        f.write(f"Average Dice Score: {avg_dice:.4f}\n")
-        f.write(f"Average Loss: {avg_loss:.4f}\n")
-
-    print(f"Results saved to {result_path}")
+    print(f"Dice Score: {avg_dice:.4f} Average Loss: {avg_loss:.4f}\n")
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='Predict masks from input images')
-    parser.add_argument('--model', default='unet', help='path to the stored model weight')
+    parser.add_argument('--model', default='unet', help='Model type: "unet" or "resnet34"')
     parser.add_argument('--data_path', type=str, required=True, help='path to the input data')
     parser.add_argument('--batch_size', '-b', type=int, default=1, help='batch size')
     
